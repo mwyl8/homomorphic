@@ -1,0 +1,73 @@
+import tenseal as ts
+from pymilvus import MilvusClient
+from time import perf_counter
+import random
+
+# === 1. Connect to Milvus ===client = MilvusClient("milvus_demo.db")
+collection_name = "yamnet_embeddings"
+
+client = MilvusClient("milvus_demo.db")
+results = client.query(
+    collection_name=collection_name,
+    output_fields=["vector"],
+    limit=6  # Fetch more than 1 so we can use one as query
+)
+
+# === 2. Extract vectors ===
+all_vectors = [r["vector"] for r in results]
+dim = len(all_vectors[0])
+
+# Use the first vector as the query, rest as database
+query_vector = all_vectors[0]
+database_vectors = all_vectors[1:]
+
+# Optionally, convert to integers (for repeated add)
+query_vector_int = [int(round(v)) for v in query_vector]
+for i in range(len(database_vectors)):
+    database_vectors[i] = [int(round(v)) for v in database_vectors[i]]
+
+# === 3. Set up TenSEAL context and encrypt query ===
+context = ts.context(
+    ts.SCHEME_TYPE.CKKS,
+    poly_modulus_degree=8192,
+    coeff_mod_bit_sizes=[60, 40, 40, 60]
+)
+context.global_scale = 2**40
+context.generate_galois_keys()
+
+# Encrypt each element of the query vector individually
+enc_query_vector = [ts.ckks_vector(context, [v]) for v in query_vector_int]
+
+# === 4. Define log-time repeated add ===
+def fast_repeated_add(enc_val, times):
+    if times <= 0:
+        return ts.ckks_vector(context, [0.0])
+    result = None
+    current = enc_val
+    while times > 0:
+        if times % 2 == 1:
+            result = current if result is None else result + current
+        current += current
+        times //= 2
+    return result
+
+# === 5. Compute encrypted dot products via repeated addition ===
+encrypted_dot_products = []
+start = perf_counter()
+
+for db_vec in database_vectors:
+    enc_dot = ts.ckks_vector(context, [0.0])
+    for i in range(dim):
+        y_i = db_vec[i]
+        partial = fast_repeated_add(enc_query_vector[i], y_i)
+        #//to delete
+        print(perf_counter() - start)
+        print("\n")
+        enc_dot += partial
+    encrypted_dot_products.append(enc_dot)
+
+end = perf_counter()
+
+# === 6. Output performance ===
+print(f"Encrypted dot products computed: {len(encrypted_dot_products)}")
+print(f"Total computation time (fast repeated add): {end - start:.4f} seconds")

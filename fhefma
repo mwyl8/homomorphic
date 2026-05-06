@@ -1,0 +1,37 @@
+
+=== Processing collection: fma_1000_audio_vectors ===
+Encrypted dot products computed: 998
+
+--- Performance Report ---
+Wall-clock time: 10966.0374 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 1155.11 MB
+--------------------------
+
+=== Processing collection: fma_1000_audio_vectors_512 ===
+Encrypted dot products computed: 998
+
+--- Performance Report ---
+Wall-clock time: 5485.6097 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.00 MB
+--------------------------
+
+=== Processing collection: fma_1000_audio_vectors_256 ===
+Encrypted dot products computed: 998
+
+--- Performance Report ---
+Wall-clock time: 2759.5230 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.00 MB
+--------------------------
+
+=== Processing collection: fma_1000_audio_vectors_128 ===
+Encrypted dot products computed: 998
+
+--- Performance Report ---
+Wall-clock time: 1392.4571 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: -0.02 MB
+--------------------------
+E20251002 15:07:37.415467 122878 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

@@ -1,0 +1,11 @@
+nohup: ignoring input
+
+Dot products computed: 999
+
+--- Performance Report ---
+CPU time (user): 0.18s
+CPU time (system): 0.01s
+Memory used: 0.00 MB
+Wall-clock time: 0.1865 seconds
+--------------------------
+E20251001 05:52:04.639137 65766 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

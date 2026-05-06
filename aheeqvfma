@@ -1,0 +1,41 @@
+
+=== Running encrypted-query AHE for collection: fma_1000_audio_vectors ===
+
+--- Performance Report ---
+Wall-clock time: 97.6377 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 374.43 MB
+--------------------------
+Processed 998 vectors
+Encrypted dot products computed: 998
+
+=== Running encrypted-query AHE for collection: fma_1000_audio_vectors_512 ===
+
+--- Performance Report ---
+Wall-clock time: 52.0103 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.00 MB
+--------------------------
+Processed 998 vectors
+Encrypted dot products computed: 998
+
+=== Running encrypted-query AHE for collection: fma_1000_audio_vectors_256 ===
+
+--- Performance Report ---
+Wall-clock time: 29.2371 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 998 vectors
+Encrypted dot products computed: 998
+
+=== Running encrypted-query AHE for collection: fma_1000_audio_vectors_128 ===
+
+--- Performance Report ---
+Wall-clock time: 17.7858 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 998 vectors
+Encrypted dot products computed: 998
+E20251002 15:11:11.604643 133668 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

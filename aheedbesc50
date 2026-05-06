@@ -1,0 +1,41 @@
+
+=== Running encrypted-database AHE for collection: esc50_audio_vectors_1024 ===
+
+--- Performance Report ---
+Wall-clock time: 6800.8331 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 1226.57 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+
+=== Running encrypted-database AHE for collection: esc50_audio_vectors_512 ===
+
+--- Performance Report ---
+Wall-clock time: 3525.1066 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+
+=== Running encrypted-database AHE for collection: esc50_audio_vectors_256 ===
+
+--- Performance Report ---
+Wall-clock time: 1743.6281 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+
+=== Running encrypted-database AHE for collection: esc50_audio_vectors_128 ===
+
+--- Performance Report ---
+Wall-clock time: 867.2982 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+E20251001 16:25:46.571894 79317 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

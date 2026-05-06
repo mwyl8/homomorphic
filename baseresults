@@ -1,0 +1,9 @@
+
+Dot products computed: 1000
+
+--- Performance Report ---
+Wall-clock time: 0.1806 seconds
+CPU utilization (total across 4 cores): 398.4%
+Memory used: 0.00 MB
+--------------------------
+E20250823 20:48:57.419138 57691 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

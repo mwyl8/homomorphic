@@ -1,0 +1,10 @@
+Duration for mul: 0:00:00.018805
+Duration for plus: 0:00:00.006703
+Duration for plus: 0:00:00.097238
+Duration for mul: 0:00:04.986650
+Original vectors:
+vec1: [1.5, 2.0, 3.5]
+vec2: [2.0, 1.0, 4.5]
+
+Decrypted sum: [25.999999999739746, 32.99999998293182, 60.499999992417386]
+Decrypted product: [48.000006407634274, 32.00000428711492, 252.00003378016044]

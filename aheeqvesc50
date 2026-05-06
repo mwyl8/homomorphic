@@ -1,0 +1,42 @@
+nohup: ignoring input
+
+=== Running encrypted-query AHE for collection: esc50_audio_vectors_1024 ===
+
+--- Performance Report ---
+Wall-clock time: 111.9345 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 527.59 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+
+=== Running encrypted-query AHE for collection: esc50_audio_vectors_512 ===
+
+--- Performance Report ---
+Wall-clock time: 58.5146 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+
+=== Running encrypted-query AHE for collection: esc50_audio_vectors_256 ===
+
+--- Performance Report ---
+Wall-clock time: 32.6119 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+
+=== Running encrypted-query AHE for collection: esc50_audio_vectors_128 ===
+
+--- Performance Report ---
+Wall-clock time: 19.5770 seconds
+CPU utilization (total across 4 cores): 0.0%
+Memory used: 0.26 MB
+--------------------------
+Processed 1000 vectors
+Encrypted dot products computed: 1000
+E20251001 23:37:39.899998 99959 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

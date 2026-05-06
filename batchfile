@@ -1,0 +1,20 @@
+echo python3 aheedb256.py > aheedb256 
+python3 aheedb256.py > aheedb256 
+echo python3 aheedb128.py > aheedb128
+python3 aheedb128.py > aheedb128
+echo python3 fhe6.py > fhe6
+python3 fhe6.py > fhe6
+echo python3 fhe512.py > fhe512
+python3 fhe512.py > fhe512
+echo python3 fhe256.py > fhe256
+python3 fhe256.py > fhe256
+echo python3 fhe128.py > fhe128
+python3 fhe128.py > fhe128
+echo python3 base.py > base
+python3 base.py > base
+echo python3 base512.py > base512
+python3 base512.py > base512
+echo python3 base256.py > base256
+python3 base256.py > base256
+echo python3 base128.py > base128
+python3 base128.py > base128
