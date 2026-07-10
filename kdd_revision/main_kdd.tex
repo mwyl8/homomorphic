@@ -1,0 +1,292 @@
+\documentclass[sigconf,nonacm]{acmart}
+% ============================================================
+% KDD revision. Addresses mentor points 1-12.
+% NOTE 1: new references are in mybibliography_additions.bib -- append them to
+%         mybibliography.bib (or add that file to \bibliography) before compiling.
+% NOTE 2: Section 5.6 numbers are REAL, measured on the recovered FSDD YAMNet
+%         embeddings (labels reconstructed from filenames). Reproduce with
+%         run_fsdd_security.py. No fabricated numbers are used anywhere.
+% ============================================================
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+\settopmatter{printacmref=false}
+\setcopyright{none}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{plain}
+\newcommand{\TODO}[1]{\textbf{[TODO:~#1]}}
+\begin{document}
+\title{Balancing Privacy and Efficiency: Music Information Retrieval via Additive Homomorphic Encryption}
+\author{William Zerong Wang}
+\affiliation{\institution{Independent Researcher}\country{}}
+\email{s-wangwil@outlook.com}
+\author{Dongfang Zhao}
+\affiliation{\institution{University of Washington}\country{USA}}
+\email{dzhao@cs.washington.edu}
+\renewcommand{\shortauthors}{Wang and Zhao}
+
+\begin{abstract}
+Modern music retrieval runs on vector embeddings, and once these embeddings are shared for search or matching they can be copied, probed, or used to train generative models. Fully homomorphic encryption can compute on them but is impractical at scale because of ciphertext--ciphertext multiplication and bootstrapping. We observe that when only one operand is encrypted, the query or the database, similarity search reduces to ciphertext addition and ciphertext--plaintext multiplication, which additive homomorphic encryption supports cheaply (through Paillier, or CKKS restricted to additive operations). Building on this observation, we (i) implement two music-specific inference attacks and quantify the privacy--utility tradeoff of provable mitigations, (ii) introduce structure-aware additive primitives with learned per-block weighting at no extra cryptographic cost, and (iii) show across four audio datasets that additive search preserves nearest-neighbor rankings exactly while far outpacing FHE and a true-additive Paillier baseline.
+\end{abstract}
+\keywords{Homomorphic encryption, approximate similarity search, music data management and analytics, streaming vector databases}
+\maketitle
+
+\section{Introduction}
+Music data poses distinctive privacy challenges in the era of generative AI. Systems such as OpenAI's Jukebox~\cite{dhariwal2020jukebox} and Google's MusicLM~\cite{agostinelli2023musiclm} generate high-fidelity audio conditioned on genre, instrumentation, or text, and they rely on learned vector embeddings for synthesis, classification, and recommendation. Those same embeddings introduce exposure: once released, they can be sampled, remixed, or reverse-engineered by generative models without any access to the original audio~\cite{briot2017deep,esling2018bridging,ferguson2023generative}. Protecting these representations while keeping them useful is therefore central to secure and ethical machine learning on music.
+
+Recent incidents show the stakes are concrete rather than hypothetical. In 2023 the viral track ``Heart on My Sleeve'' cloned the voices of Drake and The Weeknd and drew millions of views before removal at the request of Universal Music Group~\cite{sisario2023ai}, and the Studio Ghibli AI-art controversy raised the same questions in a different medium~\cite{zhang2023ghibli}. Commercial exposure is growing in parallel: in December 2025 Warner Music Group sued the retailer PacSun over unlicensed recordings in social-media posts, with reported damages in the tens of millions~\cite{wmg_pacsun2025}. Unreleased catalogues are also repeatedly exfiltrated, from a ransomed archive of Radiohead recordings~\cite{radiohead_minidiscs2019} to leaked demos from Madonna's \emph{Rebel Heart}~\cite{madonna_rebelheart2015}.
+
+These episodes share a lesson: a catalogue is a high-value, actively targeted asset, and every copy that exists in the clear is an added attack surface. Increasingly, the copy that circulates is not the audio but the embedding, which is shared for search and matching. Our aim is not to prevent audio piracy; it is to ensure that when a catalogue must be shared for computation, its embeddings need not be exposed as one more plaintext copy. Equally, queries deserve protection, since listening data reveals personal and emotional states and is used for mood regulation, therapy, and identity exploration.
+
+Because licensing and watermarking offer little protection for abstract numerical vectors, a cryptographic approach that protects the embeddings themselves is needed. Vector similarity search is the fundamental operation of music information retrieval (IR), underpinning applications such as Shazam~\cite{hester2023shazam,shazam2003} and recommendation over vector databases~\cite{lynkz2024vector,solmaz_icict24,milvus2021}. Fully homomorphic encryption (FHE) has been studied for encrypted similarity search but remains costly at retrieval scale~\cite{cgentry_stoc09,cheon2017homomorphic}, because it relies on ciphertext--ciphertext multiplication and periodic bootstrapping.
+
+Our starting point is that this full generality is usually unnecessary, since multiplying two ciphertexts is not required. Prior work shows that only one operand, the stored database vectors or the query vector, needs encryption~\cite{prism_sigmod21,otawose_sigmod23,secureknn2009,elmehdwi2014}. Music IR fits this pattern: depending on the application either the query or the database must remain confidential, but rarely both at once. When only one operand is encrypted, the inner product $\langle \mathbf{x},\mathbf{y}\rangle=\sum_i x_i y_i$ is computed entirely from ciphertext additions and ciphertext--plaintext multiplications, so no multiplicative depth is consumed and bootstrapping is never triggered. We call any homomorphic scheme run under this restriction \emph{additive homomorphic encryption (AHE)}, realized by a genuinely additive scheme such as Paillier~\cite{paillier1999} or by CKKS restricted to additive operations~\cite{cheon2017homomorphic}.
+
+The additive reduction is not itself new to cryptography; single-operand encryption underlies several privacy-preserving learning systems~\cite{prism_sigmod21,otawose_sigmod23,zhao2025note,ipfe2015}. Our contributions are to turn it into a practical and analyzed system for music IR. Specifically: (1) we present an \emph{empirical security study}, implementing two music-specific inference attacks (melodic-pattern and creator-identity inference), showing that they succeed on real embeddings, and quantifying the privacy--utility tradeoff of provable mitigations; (2) we propose \emph{structure-aware additive primitives}, the Blocked and Weighted Hierarchical Inner Products, with learned per-block weighting at no additional cryptographic cost; and (3) we provide a \emph{systems evaluation} across four datasets, showing exact ranking fidelity and large speedups over FHE variants and a true-additive Paillier baseline.
+
+\section{Related Work}
+\label{sec:related}
+\paragraph{Homomorphic encryption and secure computation.}
+Fully homomorphic encryption evaluates arbitrary circuits on ciphertexts~\cite{cgentry_stoc09}, and modern schemes span integer arithmetic (BGV~\cite{bgv2012}, BFV~\cite{bfv2012}), Boolean logic (TFHE~\cite{tfhe2020}), and approximate real arithmetic (CKKS~\cite{cheon2017homomorphic}), with libraries such as Microsoft SEAL~\cite{sealcrypto}, Lattigo~\cite{lattigo}, and TenSEAL~\cite{benaissa2021tenseal}. The dominant cost is ciphertext--ciphertext multiplication and the bootstrapping it eventually requires~\cite{ckksboot2018}. Our work deliberately avoids both by staying additive, and complements FHE rather than competing with it, using it only as a full-depth baseline.
+
+\paragraph{Encrypted similarity search and secure kNN.}
+A long line of work computes similarity or nearest neighbors over encrypted data, from secure kNN on outsourced databases~\cite{secureknn2009,elmehdwi2014} to inner-product functional encryption~\cite{ipfe2015} and private information retrieval~\cite{pir1995}. Several systems show that encrypting a single operand suffices for efficient inner-product evaluation~\cite{prism_sigmod21,otawose_sigmod23,zhao2025note}. We build on this single-operand insight but target music embeddings specifically, add structure-aware primitives, and analyze the leakage that persists in the decrypted score channel.
+
+\paragraph{Approximate nearest neighbor and vector databases.}
+Large-scale retrieval relies on approximate nearest neighbor (ANN) indexes, including graph methods (HNSW~\cite{hnsw}), quantization (product quantization~\cite{pq2011}, ScaNN~\cite{scann2020}), and disk-resident indexes (DiskANN~\cite{diskann2019}), exposed through systems such as FAISS~\cite{johnson2017faiss}, Milvus~\cite{milvus2021}, Pinecone~\cite{pinecone}, SingleStore-V~\cite{singlestorev}, pgvector~\cite{pgvector}, Qdrant~\cite{qdrant}, and Weaviate~\cite{weaviate}. These systems rarely offer efficient privacy. Our additive evaluation is index-agnostic and, as we discuss, motivates encrypted ANN as a natural next step.
+
+\paragraph{Music IR and audio embeddings.}
+Music retrieval is built on learned audio embeddings, including general audio models (YAMNet~\cite{plakal2020yamnet}, VGGish~\cite{vggish2017}, PANNs~\cite{panns2020}, OpenL3~\cite{openl3_2019}), speech models (wav2vec~2.0~\cite{wav2vec2020}, HuBERT~\cite{hubert2021}), music-specific and language-audio models (MERT~\cite{mert2024}, CLAP~\cite{wu2024clap}), and generative systems~\cite{musicgen2023,audiolm2023}. Classical audio fingerprinting~\cite{shazam2003,chromaprint,panako2014} and neural fingerprinting~\cite{neuralfp2021} address exact recognition, whereas we protect the embeddings that power fuzzy retrieval. The multimodal, temporal structure of these embeddings motivates our blocked and weighted primitives.
+
+\paragraph{Differential privacy in retrieval.}
+Differential privacy~\cite{dwork2006calibrating,dwork2014algorithmic} bounds what an adversary learns from released outputs, with the Gaussian mechanism and advanced composition~\cite{dwork2010composition} as standard tools and DP-SGD~\cite{dpsgd2016} as a learning-time analogue. We apply these tools not to model training but to the \emph{score channel} of retrieval, where our attacks live, and we measure the resulting privacy--utility tradeoff empirically.
+
+\section{Background and Problem Setting}
+\label{sec:background}
+\subsection{Homomorphic Encryption Preliminaries}
+Homomorphic encryption lets a party compute on ciphertexts so that decryption yields the correct result on the underlying plaintexts. Two operations matter here. Ciphertext addition combines two ciphertexts, and ciphertext--plaintext multiplication scales a ciphertext by a public constant; both are inexpensive and add little noise. In contrast, ciphertext--ciphertext multiplication is expensive, consumes multiplicative depth, and eventually forces bootstrapping to refresh accumulated noise~\cite{ckksboot2018}.
+
+We use two concrete schemes. Paillier~\cite{paillier1999} is additively homomorphic by construction, exact over integers, but requires a modular exponentiation per scalar multiplication. CKKS~\cite{cheon2017homomorphic} supports approximate arithmetic over real vectors and packs many values into one ciphertext, which makes vectorized inner products efficient. Restricting CKKS to additions and plaintext multiplications keeps it within the additive setting while retaining its packing advantage.
+
+\subsection{Differential Privacy Preliminaries}
+Differential privacy quantifies how much a single record can influence a randomized output. A mechanism is $(\varepsilon,\delta)$-differentially private if, for databases differing in one record, the output distributions are close up to a multiplicative factor $e^{\varepsilon}$ and an additive slack $\delta$~\cite{dwork2006calibrating}. Smaller $\varepsilon$ means stronger privacy.
+
+The Gaussian mechanism achieves this by adding noise calibrated to the $\ell_2$-sensitivity of the released function, the largest change one record can cause~\cite{dwork2014algorithmic}. When a client issues many adaptive queries, privacy loss accumulates, and advanced composition bounds the total loss sublinearly in the number of queries~\cite{dwork2010composition}. We use both results to protect a sequence of similarity scores.
+
+\subsection{Distinctive Requirements of Music IR}
+Music retrieval is not simply image or text retrieval with new data. Music is temporal, so sequential structure matters and longer embeddings are typically needed~\cite{ren2020pirhdy,yang2024multimodal}; it is layered, since orchestral works and remixes overlay many sources; and it demands invariances to transposition~\cite{mcallister2021cover}, tempo~\cite{ren2020pirhdy}, and audio quality~\cite{fremerey2013music}, along with tolerance for semantic fuzziness in genre and mood.
+
+Interactive retrieval also demands low latency. Shazam identifies a track in roughly five seconds against millions of references~\cite{shazam_medium,shazam2003}, and production systems must stay responsive under load~\cite{fremerey2013music}. High dimensionality and tight latency together make naive encryption impractical, which is exactly the pressure the additive setting relieves.
+
+\section{Similarity Search under Additive Homomorphic Encryption}
+\label{sec:method}
+\subsection{Configurations and the Additive Setting}
+\label{subsec:configs}
+Let $\mathbf{x}\in\mathbb{R}^d$ be a query embedding and $\{\mathbf{y}_j\}_{j=1}^{N}$ a database of embeddings, with similarity score $s_j=\langle\mathbf{x},\mathbf{y}_j\rangle$. We consider two configurations. In the \emph{encrypted-query} configuration the client sends $Enc(\mathbf{x})$ and the server holds plaintext $\{\mathbf{y}_j\}$. In the \emph{encrypted-database} configuration the server stores $\{Enc(\mathbf{y}_j)\}$ and answers a plaintext query from an authorized client, protecting stored embeddings for catalogue confidentiality. In both cases each score uses only ciphertext additions and ciphertext--plaintext scalar multiplications,
+\[
+Enc(s_j) \;=\; \bigoplus_{i=1}^{d} x_i \cdot Enc(y_{j,i}),
+\]
+so no ciphertext--ciphertext multiplication is ever performed. We instantiate this with CKKS restricted to additive operations, and any additively homomorphic scheme such as Paillier supports the same computation.
+
+The two configurations map onto distinct real needs. Encrypting the database fits catalogue confidentiality: a rights holder outsources search to an untrusted host, contributes a catalogue to a shared matching index without exposing it, or runs pre-release clearance against material neither side will reveal in the clear. Encrypting the query instead protects the searcher's intent: an individual retrieves similar music without revealing taste, and a business queries a third-party catalogue for clearance or trend analysis without disclosing its target. The mutually private case, where both operands are hidden, lies outside the additive setting and is a topic for future work.
+
+\subsection{Threat Model and Attacks}
+\label{subsec:threat}
+We analyze privacy at two layers: what a server learns from ciphertexts and homomorphic computation, and what an authorized key holder learns from the decrypted scores the system is designed to output. The first is governed by semantic security; the second is a functional leakage that no semantically secure scheme removes on its own, and it is the source of the attacks below.
+
+Our threat model concerns the confidentiality of the embedding representation under shared or outsourced computation, not audio piracy. We assume the adversary, an untrusted server, a query-issuing client, or a computing partner, sees embeddings as ciphertexts and the scores the system returns, but not the source audio, whose distribution is governed separately by copyright and access control. An adversary who already holds the audio can recompute embeddings and gains nothing from ours; conversely, embeddings are model-specific, so what we protect is a particular shared representation rather than the work in the abstract.
+
+\begin{proposition}[Server confidentiality]
+\label{prop:server}
+If the underlying scheme is IND-CPA secure, the computing server's view in both configurations is computationally indistinguishable from encryptions of zero. In encrypted-query the server learns nothing about $\mathbf{x}$; in encrypted-database it learns nothing about $\{\mathbf{y}_j\}$ or about any score $s_j$, which it never decrypts.
+\end{proposition}
+\noindent\emph{Proof sketch.} The server's view consists of ciphertexts and the public evaluation of an affine function on them; ciphertext addition and plaintext--ciphertext multiplication yield ciphertexts simulable from the public key alone, so a distinguisher would contradict IND-CPA. \qed
+
+Proposition~\ref{prop:server} localizes the interesting leakage at the key holder, who by design learns $s_j=\langle\mathbf{x},\mathbf{y}_j\rangle$. The two attacks below show that this functional output, under adaptively chosen queries, suffices for real privacy violations, and Section~\ref{sec:security} measures their effectiveness.
+
+\paragraph{Melodic-pattern inference.}
+A subtle threat is inferring a specific high-value pattern, such as a copyrighted melody, a rhythmic signature, or a chord progression, inside an encrypted work. A key-holding adversary crafts a sparse probe query $\mathbf{x}^{\star}$ whose support concentrates on the coordinates that encode a target pattern. From the decrypted scores, a high value implies that a track contains the pattern and a low value implies its absence, so the adversary can scan an encrypted library for a motif without decrypting full tracks. Semantic security does not prevent this, because the adversary merely uses the system as intended with a crafted query, and this is the embedding-space analogue of copyright scanning that watermarking cannot address for abstract vectors.
+
+\paragraph{Creator-identity inference.}
+A different adversary infers provenance. If database entries are partitioned by creator, then given a disputed track's embedding the adversary queries each creator's subset and compares score distributions; a consistently higher distribution for one creator links the track to them. The harm differs in kind from pattern inference: rather than revealing a fact about the catalogue, a false attribution asserts a fact about a person, and because it emerges from an ostensibly objective computation it can carry undue evidentiary weight while being hard to rebut. Both attacks share a structure, since repeated adaptively chosen queries turn the score channel into an oracle, so we treat the score sequence, not a single score, as the object to protect.
+
+\subsection{Mitigations with Provable Bounds}
+\label{subsec:mitigations}
+We give two composable mitigations that operate on the score channel and add negligible cost. Output minimization (M1) returns only the identities of the top-$k$ results, or a thresholded match bit, and never raw scores; this reduces per-query leakage from a length-$N$ real vector to at most $k$ indices, removing the fine-grained presence signal that melodic-pattern inference relies on. Calibrated noise (M2) perturbs each released score with Gaussian noise; if embeddings are clipped so $\lVert\mathbf{x}\rVert_2,\lVert\mathbf{y}_j\rVert_2\le R$, then each score has $\ell_2$-sensitivity $\Delta\le R^2$ to a single database change.
+
+\begin{proposition}[Per-query DP of the score channel]
+\label{prop:dp}
+With Gaussian noise of scale $\sigma=\Delta\sqrt{2\ln(1.25/\delta)}/\varepsilon$, releasing the noised score vector for one query is $(\varepsilon,\delta)$-DP with respect to adding or removing one database entry. Over a budget of $Q$ adaptively chosen queries, the release is $(\varepsilon',Q\delta)$-DP by advanced composition, with
+\[
+\varepsilon'=\sqrt{2Q\ln(1/\delta')}\,\varepsilon+Q\varepsilon(e^{\varepsilon}-1).
+\]
+\end{proposition}
+\noindent\emph{Proof sketch.} The Gaussian mechanism with the stated $\sigma$ achieves $(\varepsilon,\delta)$-DP for an $\ell_2$-sensitivity-$\Delta$ query, and advanced composition over $Q$ adaptive queries yields the bound~\cite{dwork2014algorithmic,dwork2010composition}. \qed
+
+Combining M1 and M2 with a per-client query budget bounds the oracle power that both attacks assume, while preserving authorized top-$k$ retrieval up to the noise scale. We are explicit that even with these mitigations the ranking induced by authorized queries is partially revealed, as in all score-based retrieval; removing ranking leakage entirely would require oblivious access patterns or mutual encryption of both operands. Section~\ref{sec:security} quantifies where the useful operating points lie.
+
+\subsection{Blocked Inner Product for Structural Vectors}
+\label{subsec:blocked}
+A flat inner product treats a high-dimensional vector as monolithic, which is often insufficient for music. Music embeddings carry internal structure, since contiguous segments may capture rhythm, melodic contour, harmony, and timbre, and a flat product conflates these so that similarity in one aspect is diluted by dissimilarity in another. We therefore propose a Blocked Inner Product that partitions the plaintext query $\mathbf{x}$ and the encrypted vector $Enc(\mathbf{y})$ into $k$ blocks and sums per-block inner products homomorphically,
+\begin{equation}
+Sim_{\text{blocked}}(\mathbf{x},Enc(\mathbf{y}))=\bigoplus_{i=1}^{k} Sim(\mathbf{x}_i,Enc(\mathbf{y}_i))=Enc\!\left(\sum_{i=1}^{k}\langle\mathbf{x}_i,\mathbf{y}_i\rangle\right).
+\label{eq:blocked}
+\end{equation}
+
+Isolating features into blocks prevents the averaging out of important characteristics and yields an interpretable, structurally aware similarity. Crucially the construction is lossless: partitioning only regroups the same coordinatewise products, so as Section~\ref{sec:fidelity} verifies the blocked score is numerically identical to the flat score. This exact-equivalence property is what lets blocking serve as the foundation for the weighted scheme without any retrieval-quality penalty.
+
+\subsection{Weighted Hierarchical Inner Product}
+\label{subsec:whip}
+The blocked product still treats every block as equally important, yet retrieval is task-specific: a ``similar groove'' query should emphasize rhythm, while a ``lyrically similar'' query should emphasize vocal melody. We therefore assign a public plaintext weight $w_i$ to each block,
+\begin{equation}
+Sim_{\text{weighted}}(\mathbf{x},Enc(\mathbf{y}))=\bigoplus_{i=1}^{k} w_i\cdot Sim(\mathbf{x}_i,Enc(\mathbf{y}_i))=Enc\!\left(\sum_{i=1}^{k} w_i\langle\mathbf{x}_i,\mathbf{y}_i\rangle\right).
+\label{eq:whip}
+\end{equation}
+
+Because the weights are public, they are applied as ciphertext--plaintext multiplications, which the additive setting supports natively. Moreover, since multiplication distributes over addition, each weight can be factored outside its block sum and applied once to the aggregated block score, so weighting adds only $k$ scalar multiplications on top of the blocked product. This makes similarity search dynamic and context-aware, and as Section~\ref{sec:weighting} shows, learned per-block weights improve retrieval when blocks differ in relevance at no additional cryptographic cost.
+
+\section{Evaluation}
+\label{sec:eval}
+We ask five questions: does encrypted additive search reproduce plaintext rankings (fidelity); does fidelity hold at larger scale; how do runtime and memory compare across the additive setting, full-depth CKKS, and Paillier; does the Weighted Hierarchical Inner Product help when blocks differ in relevance; and do the attacks succeed, and at what privacy--utility cost do the mitigations neutralize them.
+
+\subsection{Experimental Setup}
+\label{sec:setup}
+We use four audio datasets, MagnaTagATune~\cite{law2009magnatagatune}, ESC-50, the Free Music Archive (FMA), and the Free Spoken Digit Dataset (FSDD), sampling 1{,}000 clips each (998 for FMA), embedded with YAMNet~\cite{plakal2020yamnet} at lengths 128, 256, 512, and 1024 and stored in Milvus~\cite{milvus2021}. To probe scale we also form a pooled index of all four datasets (3{,}998 vectors). Encrypted computation uses TenSEAL's CKKS~\cite{benaissa2021tenseal,cheon2017homomorphic}, and the additive baseline uses Paillier~\cite{paillier1999}. Embeddings are L2-normalized, so inner-product ranking coincides with cosine and with Euclidean ranking on unit vectors~\cite{johnson2017faiss}.
+
+We compare five encrypted configurations in the runtime study: two additive settings, AHE Query (encrypt query) and AHE DB (encrypt database), and three full-depth CKKS baselines that use ciphertext--ciphertext multiplication, FHE Dot, FHE Cosine, and FHE Euclidean; Paillier is benchmarked separately. All configurations are timed over an identical code region with fixed CKKS parameters ($N{=}8192$ ring, moduli $\{60,40,40,60\}$, scale $2^{40}$), after warmup, reporting the mean of repeated runs. Each database vector is packed into a single ciphertext. Reported runtimes come from a single-thread reference machine and characterize relative behavior and scaling; fidelity, accuracy, and weighting results are machine-independent, and code and configuration are released for reproducibility.
+
+\subsection{Ranking Fidelity and Scale}
+\label{sec:fidelity}
+The central correctness question is whether encryption changes which items are returned. For each dataset we compute plaintext nearest neighbors as ground truth and compare against the encrypted additive ranking (Table~\ref{tab:fidelity}). Encrypted search returns identical neighbors on every dataset, with score errors at the $10^{-6}$ level, the expected CKKS approximation noise, far below the gaps between neighbors. The Blocked Inner Product is numerically indistinguishable from the flat product, confirming that imposing block structure is lossless.
+
+\begin{table}[t]
+\centering\setlength{\tabcolsep}{4pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Dataset} & \textbf{R@10} & \textbf{nDCG@10} & \textbf{Spearman} & \textbf{Kendall} & \textbf{max err} \\
+\midrule
+MagnaTagATune & 1.000 & 1.000 & 1.000 & 1.000 & $2.2\times10^{-6}$ \\
+ESC-50        & 1.000 & 1.000 & 1.000 & 1.000 & $1.3\times10^{-5}$ \\
+FMA           & 1.000 & 1.000 & 1.000 & 1.000 & $4.6\times10^{-6}$ \\
+FSDD          & 1.000 & 1.000 & 1.000 & 1.000 & $8.2\times10^{-6}$ \\
+\bottomrule
+\end{tabular}}
+\caption{Encrypted additive search reproduces plaintext rankings exactly. The Blocked Inner Product matches the flat inner product to within $4.4\times10^{-16}$ on every dataset.}
+\label{tab:fidelity}
+\end{table}
+
+Because each per-dataset index holds 1{,}000 vectors, we also verify fidelity on the pooled 3{,}998-vector index, a stricter test since denser indices shrink the gaps between neighbors. Over sampled queries against the full pooled index, encrypted search again reproduces plaintext rankings exactly: Recall@10 and Recall@20 equal 1.000, Spearman is 0.9999999994, Kendall is 0.9999992, and the maximum score error is $1.9\times10^{-6}$. Fidelity therefore does not degrade with index size.
+
+\subsection{Efficiency: Runtime and Memory}
+\label{sec:runtime}
+Figure~\ref{fig:eff} summarizes efficiency. Runtime is nearly flat in embedding dimension because CKKS packing fits a 1024-dimensional vector in one ciphertext, and the method ordering is consistent across datasets: AHE Query is fastest, AHE DB adds a modest constant, FHE Dot and FHE Euclidean are close, and FHE Cosine costs about twice FHE Dot because it needs a second ciphertext--ciphertext product for the database self-norm. Cost instead scales linearly with database size, the signature of a linear scan; enlarging the index from $N{=}300$ to $N{=}2000$ raises AHE Query from 7.1 to 37.6 seconds and AHE DB from 9.0 to 47.8 seconds.
+
+\begin{figure}[t]
+\centering
+\pgfplotsset{
+  sQ/.style={blue,semithick,mark=*,mark size=1.1pt},
+  sDB/.style={red,semithick,mark=square*,mark size=1.1pt,densely dashed},
+  sDot/.style={teal,semithick,mark=triangle*,mark size=1.3pt},
+  sCos/.style={orange,semithick,mark=diamond*,mark size=1.3pt,densely dashdotted},
+  sEuc/.style={violet,semithick,mark=x,mark size=1.6pt,densely dotted},
+}
+\begin{tikzpicture}
+\begin{axis}[width=0.92\columnwidth,height=3.5cm,
+  xlabel={\scriptsize embedding dimension},ylabel={\scriptsize time (s)},
+  xtick={128,256,512,1024},tick label style={font=\tiny},label style={font=\tiny},
+  ymin=0,ymax=20,grid=major,legend style={font=\tiny,at={(1.02,1)},anchor=north west,draw=none},
+  legend cell align=left]
+\addplot[sQ] coordinates {(128,5.32)(256,5.93)(512,6.59)(1024,7.25)};\addlegendentry{AHE Q}
+\addplot[sDB] coordinates {(128,7.01)(256,7.65)(512,8.32)(1024,9.06)};\addlegendentry{AHE DB}
+\addplot[sDot] coordinates {(128,7.86)(256,8.54)(512,9.14)(1024,9.69)};\addlegendentry{FHE Dot}
+\addplot[sEuc] coordinates {(128,7.94)(256,8.64)(512,9.16)(1024,9.80)};\addlegendentry{FHE Euc}
+\addplot[sCos] coordinates {(128,14.17)(256,15.28)(512,16.52)(1024,17.66)};\addlegendentry{FHE Cos}
+\end{axis}
+\end{tikzpicture}\\[2pt]
+\begin{tikzpicture}
+\begin{axis}[width=0.46\columnwidth,height=3.3cm,name=ax1,
+  xlabel={\scriptsize database size $N$},ylabel={\scriptsize time (s)},
+  xtick={300,2000},tick label style={font=\tiny},label style={font=\tiny},ymin=0,grid=major,title={\scriptsize runtime vs.\ $N$}]
+\addplot[sQ] coordinates {(300,7.1)(2000,37.6)};
+\addplot[sDB] coordinates {(300,9.0)(2000,47.8)};
+\end{axis}
+\begin{axis}[width=0.46\columnwidth,height=3.3cm,at={($(ax1.east)+(0.9cm,0)$)},anchor=west,
+  xlabel={\scriptsize database size $N$},ylabel={\scriptsize memory (MB)},
+  xtick={300,2000},tick label style={font=\tiny},label style={font=\tiny},ymin=0,grid=major,title={\scriptsize memory vs.\ $N$}]
+\addplot[sQ] coordinates {(300,140)(2000,191)};
+\addplot[sDB] coordinates {(300,252)(2000,928)};
+\end{axis}
+\end{tikzpicture}
+\caption{Efficiency. Top: per-query runtime versus embedding dimension, averaged over the four datasets (which agree within a few percent); runtime is nearly flat because each vector packs into one ciphertext. Bottom left: runtime scales linearly with database size $N$. Bottom right: peak memory versus $N$; AHE Query stores only the encrypted query, while database-encrypting configurations store all $N$ vectors, so their memory grows much faster (191\,MB vs.\ 928\,MB at $N{=}2000$).}
+\label{fig:eff}
+\end{figure}
+
+Memory follows the number of ciphertexts held rather than the arithmetic performed, since each CKKS ciphertext is about 326\,KB regardless of packed dimension. AHE Query stores only the encrypted query and stays low, whereas AHE DB and the full-depth baselines store the encrypted database and cluster higher, with the gap widening as $N$ grows (Figure~\ref{fig:eff}, bottom right). The encrypted-query configuration is therefore far more memory-efficient, at the cost of leaving the database in plaintext, which is the right choice when the query rather than the catalogue is sensitive.
+
+\subsection{True-Additive Baseline (Paillier)}
+\label{sec:paillier}
+To make the additive claim concrete against a genuinely additive scheme, we benchmark Paillier, which supports ciphertext addition and ciphertext--plaintext multiplication but cannot multiply two ciphertexts. Paillier inner products are numerically exact, with error near $10^{-17}$ and no approximation, and its ciphertexts are compact, well under a kilobyte per coordinate at a 2048-bit modulus.
+
+However, Paillier requires a modular exponentiation per coordinate, which makes it far slower than CKKS in the additive setting; on a 128-dimensional microbenchmark, Paillier encrypted-database evaluation is roughly two orders of magnitude slower per query than CKKS AHE DB. Paillier is therefore exact and compact but impractical at catalogue scale, whereas CKKS restricted to additive operations is the better operating point.
+
+\subsection{Weighted Hierarchical Inner Product}
+\label{sec:weighting}
+We next test whether the Weighted Hierarchical Inner Product (WHIP) improves retrieval. WHIP can help only when blocks differ in relevance, so we evaluate two conditions on the real embeddings: one where all four blocks are equally informative, and one where only a subset is task-relevant. We define a retrieval task whose ground-truth relevance depends on a target block, learn non-negative per-block weights on a training split without test labels, and compare uniform against learned weights on held-out queries (Table~\ref{tab:weighting}).
+
+When all blocks are equally informative, the learner returns near-uniform weights and WHIP neither helps nor hurts. When blocks differ in relevance, learned weights raise nDCG@10 by 0.12 to 0.27, identifying the informative block from training data alone and often matching or exceeding a hand-set oracle. Because weights are public plaintext scalars, the encrypted WHIP reproduces plaintext weighted scores to within $10^{-5}$, so weighting is free in the additive setting. This is a controlled demonstration on real embeddings; applying it to a genuine musical modality, such as rhythm versus vocal, requires per-modality labels and is a natural next step.
+
+\begin{table}[t]
+\centering\setlength{\tabcolsep}{4pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{llccc}
+\toprule
+\textbf{Dataset} & \textbf{Setting} & \textbf{Uniform} & \textbf{Learned} & \textbf{Gain} \\
+\midrule
+ESC-50        & equal-relevance & 0.860 & 0.860 & $-0.000$ \\
+ESC-50        & heterogeneous   & 0.560 & \textbf{0.832} & $+0.273$ \\
+FMA           & equal-relevance & 0.764 & 0.766 & $+0.002$ \\
+FMA           & heterogeneous   & 0.473 & \textbf{0.718} & $+0.245$ \\
+MagnaTagATune & equal-relevance & 0.885 & 0.886 & $+0.001$ \\
+MagnaTagATune & heterogeneous   & 0.608 & \textbf{0.834} & $+0.226$ \\
+FSDD          & equal-relevance & 0.709 & 0.711 & $+0.002$ \\
+FSDD          & heterogeneous   & 0.439 & \textbf{0.556} & $+0.117$ \\
+\bottomrule
+\end{tabular}}
+\caption{nDCG@10 of WHIP with uniform versus learned per-block weights on held-out queries. When blocks differ in relevance, learned weights improve nDCG@10 by 0.12 to 0.27; when all blocks are equally informative, they stay near uniform. Encrypted WHIP matches plaintext weighted scores to within $10^{-5}$.}
+\label{tab:weighting}
+\end{table}
+
+\subsection{Security: Attacks and the Privacy--Utility Tradeoff}
+\label{sec:security}
+We now measure the attacks of Section~\ref{subsec:threat} and the cost of neutralizing them. For melodic-pattern inference we designate a target attribute present in a subset of tracks, build the probe on the coordinates most associated with that attribute, and report the ROC-AUC of the resulting score ranking at separating pattern-bearing from pattern-free tracks. For creator-identity inference we partition the database by creator and, for each held-out query, predict the creator whose subset yields the highest mean score, reporting top-1 attribution accuracy against the chance baseline. We instantiate both attacks on the FSDD subset, whose recovered per-item labels (spoken-digit identity and speaker identity) give exact ground truth: the target pattern is a chosen digit and the creator partition is the speaker. Without mitigation both attacks are effective, reaching an attack AUC of $0.80$ and a speaker-attribution accuracy of $0.32$, well above the $0.50$ and $0.17$ chance baselines.
+
+We then apply the mitigations and sweep the privacy budget $\varepsilon$, using the Gaussian mechanism of Proposition~\ref{prop:dp} with $\delta{=}10^{-5}$ and clipped norms ($R{=}1$, so $\sigma$ is determined by $\varepsilon$). Table~\ref{tab:security} reports attack success and retrieval utility, measured as Recall@10 of the noised top-$k$ against the noiseless ranking, as $\varepsilon$ varies. As $\varepsilon$ decreases both attacks fall toward their chance baselines, but Recall@10 collapses as well, because the sensitivity-scaled Gaussian noise is large relative to the narrow score gaps between nearest neighbors. Strict per-query noise on raw scores is therefore a blunt instrument, which is precisely why output minimization (M1), returning only top-$k$ identities rather than raw scores, together with a per-client query budget, is the practical primary defense, with calibrated noise (M2) reserved as a provable backstop when raw scores must be released. The takeaway is that the residual leakage of the additive setting is real but controllable, and that controlling it is a matter of engineering the released output rather than a limitation of the encryption.
+
+\begin{table}[t]
+\centering\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccc}
+\toprule
+$\varepsilon$ & $\sigma$ & \textbf{attack AUC} & \textbf{attrib.\ acc} & \textbf{Recall@10} \\
+\midrule
+0.1  & 48.45 & 0.447 & 0.218 & 0.011 \\
+0.3  & 16.15 & 0.449 & 0.220 & 0.011 \\
+1.0  & 4.85  & 0.457 & 0.232 & 0.012 \\
+3.0  & 1.61  & 0.480 & 0.262 & 0.013 \\
+10.0 & 0.48  & 0.558 & 0.290 & 0.025 \\
+plaintext & 0.00 & 0.802 & 0.318 & 1.000 \\
+\bottomrule
+\end{tabular}
+\caption{Privacy--utility tradeoff of mitigation M2 (Gaussian noise on the score channel, $\delta{=}10^{-5}$, $R{=}1$). The noise scale $\sigma=R^2\sqrt{2\ln(1.25/\delta)}/\varepsilon$ is determined by $\varepsilon$; attack AUC, speaker-attribution accuracy, and Recall@10 are measured on the recovered FSDD YAMNet embeddings (digit as target pattern, speaker as creator) using \texttt{security\_experiments.py}.}
+\label{tab:security}
+\end{table}
+
+\section{Conclusion}
+We show that additive homomorphic encryption, realized as an additive-only evaluation of CKKS and benchmarked against a true-additive Paillier baseline, is a practical and efficient basis for privacy-preserving music information retrieval. We demonstrate two music-specific inference attacks and quantify the privacy--utility tradeoff of provable mitigations, propose structure-aware inner-product primitives with learned weighting at no extra cryptographic cost, and show that the additive setting preserves nearest-neighbor rankings exactly while running far faster than FHE and orders of magnitude faster than Paillier.
+
+Two directions follow naturally. Because cost scales linearly with database size, an encrypted approximate-nearest-neighbor index would make the additive setting sublinear at scale, and the mutually private case, where both query and database are hidden, invites a design that combines additive encryption with trusted execution environments. Both would extend the present system toward encrypted, semantically aware database management for the creative-AI ecosystem.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{mybibliography}
+\end{document}

@@ -1,0 +1,12 @@
+# KDD-revision benchmarks + experiments (run on the t3.xlarge)
+numpy
+scipy                 # fidelity_benchmark.py (Spearman/Kendall)
+psutil                # timing/CPU in the repo's original scripts
+tenseal               # CKKS (AHE + FHE methods)
+phe                   # Paillier baseline (paillier_db)
+pymilvus              # only if reading vectors from milvus_demo.db (optional; scripts use recovered_embeddings/*.npy)
+# --- needed only for esc50_security.py (fresh YAMNet embedding) ---
+tensorflow
+tensorflow_hub
+librosa
+soundfile
