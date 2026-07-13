@@ -1,2 +1,0 @@
-nohup: ignoring input
-./run_jobs.sh: line 4: 56018 Killed                  python3 aheedb.py > aheedbresults 2>&1

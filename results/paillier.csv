@@ -1,0 +1,5 @@
+method,dataset,dim,N,per_query_s,peak_mem_mb
+paillier_db,magnatagatune,128,50,0.7357,13.7
+paillier_db,magnatagatune,256,50,1.4179,18.4
+paillier_db,magnatagatune,512,50,2.579,27.7
+paillier_db,magnatagatune,1024,50,4.8,46.2

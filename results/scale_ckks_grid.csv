@@ -1,0 +1,16 @@
+method,dataset,dim,N,per_query_s,peak_mem_mb
+base,magnatagatune,128,300,0.0035,0.0
+base,magnatagatune,256,10000,0.2361,0.0
+base,magnatagatune,1024,10000,1.0267,0.0
+ahe_query,magnatagatune,256,300,5.8558,88.1
+ahe_query,magnatagatune,256,10000,196.2073,70.3
+ahe_query,magnatagatune,1024,10000,289.8779,11.6
+ahe_db,magnatagatune,256,300,6.4844,201.0
+ahe_db,magnatagatune,128,10000,211.8808,6070.6
+ahe_db,magnatagatune,256,10000,219.8906,5883.4
+ahe_db,magnatagatune,1024,10000,255.9416,5870.5
+fhe_dot,magnatagatune,256,10000,243.4297,5942.5
+fhe_euclidean,magnatagatune,256,10000,227.2543,5913.3
+fhe_cosine,magnatagatune,256,10000,448.3658,5913.3
+fhe_cosine,magnatagatune,1024,10000,524.4206,5935.0
+NOTE: abridged key rows; full grid pasted in chat/more_bundle.txt
