@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Data / artifacts (keep the repo about code, not GBs of data)
+*.mp3
+*.wav
+*.npy
+recovered_embeddings/
+milvus_demo.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

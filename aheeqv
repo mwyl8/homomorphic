@@ -1,8 +1,0 @@
---- Performance Report ---
-CPU time (user): 89.23s
-CPU time (system): 0.37s
-Memory used: 538.18 MB
---------------------------
-83.89734531500835
-Encrypted dot products computed: 1000
-E20250706 23:36:18.475313  7637 server.cpp:47] [SERVER][BlockLock][milvus] Process exit

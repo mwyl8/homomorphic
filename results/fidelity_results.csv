@@ -1,0 +1,5 @@
+dataset,R@10,nDCG@10,Spearman,Kendall,max_err
+magnatagatune,1.0,1.0,1.0,0.999999,1.0e-06
+esc50,1.0,1.0,1.0,0.999999,1.0e-06
+fma,1.0,1.0,1.0,1.0,1.0e-06
+fsdd,1.0,1.0,1.0,0.999999,1.1e-06

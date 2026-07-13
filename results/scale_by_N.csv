@@ -1,0 +1,13 @@
+method,dataset,dim,N,per_query_s,peak_mem_mb
+ahe_query,magnatagatune,256,100,1.9353,87.9
+ahe_query,magnatagatune,256,250,4.8864,88.8
+ahe_query,magnatagatune,256,500,9.692,88.8
+ahe_query,magnatagatune,256,1000,20.0182,88.5
+ahe_query,magnatagatune,256,2000,38.4021,86.8
+ahe_query,magnatagatune,256,3000,57.4695,85.2
+ahe_db,magnatagatune,256,100,2.0173,126.0
+ahe_db,magnatagatune,256,250,4.8163,183.1
+ahe_db,magnatagatune,256,500,9.6114,277.1
+ahe_db,magnatagatune,256,1000,19.3049,463.6
+ahe_db,magnatagatune,256,2000,38.6064,954.8
+ahe_db,magnatagatune,256,3000,59.7883,1211.3

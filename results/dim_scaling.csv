@@ -1,0 +1,9 @@
+method,dataset,dim,N,per_query_s,peak_mem_mb
+ahe_query,magnatagatune,128,100,1.7619,89.1
+ahe_query,magnatagatune,256,100,1.9427,87.8
+ahe_query,magnatagatune,512,100,2.1571,84.9
+ahe_query,magnatagatune,1024,100,2.3501,79.2
+ahe_db,magnatagatune,128,100,1.7494,151.0
+ahe_db,magnatagatune,256,100,1.9363,126.0
+ahe_db,magnatagatune,512,100,2.2367,122.7
+ahe_db,magnatagatune,1024,100,2.4648,116.4
